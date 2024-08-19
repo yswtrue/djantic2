@@ -1,9 +1,9 @@
 from tempfile import NamedTemporaryFile
 
 import pytest
+from pydantic import ConfigDict
 from testapp.models import Attachment
 
-from pydantic import ConfigDict
 from djantic import ModelSchema
 
 
@@ -50,3 +50,22 @@ def test_image_field_schema():
         "description": attachment.description,
         "image": attachment.image.name,
     }
+
+
+@pytest.mark.django_db
+def test_model_validate():
+    class AttachmentSchema(ModelSchema):
+        model_config = ConfigDict(model=Attachment)
+
+    image_file = NamedTemporaryFile(suffix=".jpg")
+    attachment = Attachment.objects.create(
+        description="My image upload",
+        image=image_file.name,
+    )
+    raw_init_item = AttachmentSchema.model_validate(
+        attachment,
+        from_attributes=True,
+    )
+
+    wrapper_item = AttachmentSchema.from_django(attachment)
+    assert wrapper_item == raw_init_item

@@ -3,8 +3,7 @@ import sys
 from enum import Enum
 from functools import reduce
 from itertools import chain
-from typing import Any, Dict, List, Optional, no_type_check, Union
-from typing_extensions import get_origin, get_args
+from typing import Any, Dict, List, Optional, Union, no_type_check
 
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Manager, Model
@@ -13,8 +12,9 @@ from django.db.models.fields.reverse_related import ForeignObjectRel, OneToOneRe
 from django.utils.encoding import force_str
 from django.utils.functional import Promise
 from pydantic import BaseModel, create_model
-from pydantic.errors import PydanticUserError
 from pydantic._internal._model_construction import ModelMetaclass
+from pydantic.errors import PydanticUserError
+from typing_extensions import get_args, get_origin
 
 if sys.version_info >= (3, 10):
     from types import UnionType
@@ -144,10 +144,10 @@ class ModelSchemaMetaclass(ModelMetaclass):
 def _is_optional_field(annotation) -> bool:
     args = get_args(annotation)
     return (
-            (get_origin(annotation) is Union or get_origin(annotation) is UnionType)
-            and type(None) in args
-            and len(args) == 2
-            and any(inspect.isclass(arg) and issubclass(arg, ModelSchema) for arg in args)
+        (get_origin(annotation) is Union or get_origin(annotation) is UnionType)
+        and type(None) in args
+        and len(args) == 2
+        and any(inspect.isclass(arg) and issubclass(arg, ModelSchema) for arg in args)
     )
 
 
@@ -222,7 +222,9 @@ class ProxyGetterNestedObj:
                     non_none_type_annotation = next(
                         arg for arg in get_args(annotation) if arg is not type(None)
                     )
-                    data[key] = self._get_annotation_objects(value, non_none_type_annotation)
+                    data[key] = self._get_annotation_objects(
+                        value, non_none_type_annotation
+                    )
 
             elif inspect.isclass(annotation) and issubclass(annotation, ModelSchema):
                 data[key] = self._get_annotation_objects(self.get(key), annotation)
@@ -281,14 +283,25 @@ class ModelSchema(BaseModel, metaclass=ModelSchemaMetaclass):
         if many:
             result_objs = []
             for obj in objs:
-                obj = ProxyGetterNestedObj(obj, cls)
-                instance = cls(**obj.dict())
-                result_objs.append(cls.model_validate(instance, context=context))
+                result_objs.append(cls.model_validate(obj, context=context))
             return result_objs
 
-        obj = ProxyGetterNestedObj(objs, cls)
+        return cls.model_validate(objs, context=context)
+
+    @classmethod
+    def model_validate(
+        cls,
+        obj: Any,
+        *,
+        strict: bool | None = None,
+        from_attributes: bool | None = None,
+        context: Any | None = None,
+    ):
+        obj = ProxyGetterNestedObj(obj, cls)
         instance = cls(**obj.dict())
-        return cls.model_validate(instance, context=context)
+        return super().model_validate(
+            instance, strict=strict, from_attributes=from_attributes, context=context
+        )
 
 
 _is_base_model_class_defined = True
